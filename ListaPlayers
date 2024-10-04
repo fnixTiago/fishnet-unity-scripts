@@ -1,0 +1,81 @@
+using FishNet.Managing;
+using FishNet.Object;
+using System.Collections.Generic;
+using UnityEngine;
+using UnityEngine.UI;
+
+public class ListaPlayers : NetworkBehaviour
+{
+    public Text playersInfoText;  // El Text donde se mostrarán los datos de los jugadores
+    private NetworkManager networkManager;
+
+    private float updateInterval = 5.0f; // Intervalo de 5 segundos
+    private float timeSinceLastUpdate = 0f;
+
+    private void Start()
+    {
+        networkManager = FindObjectOfType<NetworkManager>();
+        if (networkManager == null)
+        {
+            Debug.LogError("NetworkManager no encontrado.");
+            return;
+        }
+
+        // Si es el servidor, comenzamos a actualizar la lista de jugadores
+        if (IsServer)
+        {
+            // Llamar para mostrar los jugadores iniciales
+            UpdatePlayerList();
+        }
+    }
+
+    // Método que obtiene todos los clientes y actualiza el texto de la UI en el servidor
+    [Server]
+    private void UpdatePlayerList()
+    {
+        Debug.Log("Actualizando lista de jugadores");
+
+        // Obtener todos los objetos "spawneados"
+        Dictionary<int, NetworkObject> spawnedObjects = networkManager.ServerManager.Objects.Spawned;
+
+        // Lista para almacenar los datos de los jugadores
+        List<string> playersData = new List<string>();
+
+        foreach (var item in spawnedObjects)
+        {
+            NetworkObject netObj = item.Value;
+
+            // Buscar si el objeto tiene el componente PlayerNetwork
+            PlayerNetwork playerNetwork = netObj.GetComponent<PlayerNetwork>();
+            if (playerNetwork != null)
+            {
+                // Concatenar los datos del jugador en una cadena
+                string playerInfo = $"{playerNetwork.playerName}, {playerNetwork.playerGender}, {playerNetwork.playerTeam}";
+                playersData.Add(playerInfo);
+            }
+        }
+
+        // Enviar los datos actualizados a todos los clientes
+        RpcUpdatePlayerList(string.Join(", ", playersData));
+    }
+
+    // RPC que actualizará el Text en todos los clientes
+    [ObserversRpc]
+    private void RpcUpdatePlayerList(string updatedPlayerData)
+    {
+        playersInfoText.text = updatedPlayerData;
+    }
+
+    private void Update()
+    {
+        if (!IsServer) return; // Solo el servidor debe actualizar la lista
+
+        timeSinceLastUpdate += Time.deltaTime;
+
+        if (timeSinceLastUpdate >= updateInterval)
+        {
+            UpdatePlayerList();
+            timeSinceLastUpdate = 0f; // Resetear el contador
+        }
+    }
+}
